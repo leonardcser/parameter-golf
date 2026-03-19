@@ -75,4 +75,8 @@ Net speed: 394ms/step (vs baseline 513ms) — still 23% faster despite 2× longe
 | **sp4096, 8 blocks (2+4+2)** | **1.2951** | **14.0MB** | Fewer blocks = faster, still better |
 | **sp8192, 7 blocks (2+3+2)** | **1.2776** | **14.5MB** | **Even larger vocab wins again!** |
 
-Key insight: vocab size is the single biggest lever. Each doubling of vocab reduces tokens_per_byte by ~27%, directly lowering BPB even with higher per-token loss.
+| sp8192, 8 blocks (2+4+2) | 1.2847 | 15.8MB | Too big, 7 better |
+| sp8192, tuned LR | 1.2810 | 14.9MB | Default LR was better |
+| **sp16384, 5 blocks (2+1+2)** | **1.2634** | **15.4MB** | **Vocab keeps winning!** |
+
+Key insight: vocab size is the single biggest lever. Each doubling of vocab reduces tokens_per_byte by ~27%, directly lowering BPB even with higher per-token loss. The tradeoff is fewer transformer blocks (more params in embedding), but the BPB gains dominate.

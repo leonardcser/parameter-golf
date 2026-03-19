@@ -38,10 +38,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 class Hyperparameters:
     # Data paths are shard globs produced by the existing preprocessing pipeline.
-    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp8192")
+    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp16384")
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
     val_files = os.path.join(data_path, "fineweb_val_*.bin")
-    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_8192_bpe.model")
+    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_16384_bpe.model")
     run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
     seed = int(os.environ.get("SEED", 1337))
 
@@ -61,7 +61,7 @@ class Hyperparameters:
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
 
     # Model shape.
-    vocab_size = int(os.environ.get("VOCAB_SIZE", 8192))
+    vocab_size = int(os.environ.get("VOCAB_SIZE", 16384))
     num_layers = int(os.environ.get("NUM_LAYERS", 9))
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     model_dim = int(os.environ.get("MODEL_DIM", 512))
@@ -71,7 +71,7 @@ class Hyperparameters:
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
-    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 3))
+    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 1))
     num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 2))
     group_size = int(os.environ.get("GROUP_SIZE", 2))
 
