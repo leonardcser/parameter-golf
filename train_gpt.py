@@ -57,6 +57,7 @@ class Hyperparameters:
     train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 524_288))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 4096))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 0))  # 0 = use train_seq_len
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
 
     # Model shape.
@@ -77,10 +78,10 @@ class Hyperparameters:
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
     head_lr = float(os.environ.get("HEAD_LR", 0.008))
-    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.04))
+    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.035))
     tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
-    matrix_lr = float(os.environ.get("MATRIX_LR", 0.035))
-    scalar_lr = float(os.environ.get("SCALAR_LR", 0.04))
+    matrix_lr = float(os.environ.get("MATRIX_LR", 0.03))
+    scalar_lr = float(os.environ.get("SCALAR_LR", 0.035))
     muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.95))
     muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
     muon_momentum_warmup_start = float(os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.85))
@@ -1118,10 +1119,18 @@ def main() -> None:
         quant_blob_disk = f.read()
     quant_state = torch.load(io.BytesIO(zlib.decompress(quant_blob_disk)), map_location="cpu")
     base_model.load_state_dict(dequantize_state_dict_int8(quant_state), strict=True)
+
+    # Use longer eval context if specified (improves BPB at eval time).
+    eval_args = copy.copy(args)
+    if args.eval_seq_len > 0:
+        eval_args.train_seq_len = args.eval_seq_len
+        val_tokens = load_validation_tokens(args.val_files, eval_args.train_seq_len)
+        base_bytes_lut, has_leading_space_lut, is_boundary_token_lut = build_sentencepiece_luts(sp, args.vocab_size, device)
+
     torch.cuda.synchronize()
     t_qeval = time.perf_counter()
     q_val_loss, q_val_bpb = eval_val(
-        args,
+        eval_args,
         model,
         rank,
         world_size,
