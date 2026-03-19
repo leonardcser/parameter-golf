@@ -42,6 +42,9 @@ class Hyperparameters:
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
     val_files = os.path.join(data_path, "fineweb_val_*.bin")
     tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_16384_bpe.model")
+    # NOTE: sp16384 data must be built first: see build_sp4096.py or use
+    # uv run python data/download_hf_docs_and_tokenize.py --output-root ./data \
+    #   --tokenizer-config data/tokenizer_specs_16384.json --skip-byte --tokenizer-train-docs 200000
     run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
     seed = int(os.environ.get("SEED", 1337))
 
@@ -70,8 +73,9 @@ class Hyperparameters:
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
+    embed_rank = int(os.environ.get("EMBED_RANK", 0))  # 0 = full rank (standard embedding)
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
-    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 1))
+    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 0))
     num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 2))
     group_size = int(os.environ.get("GROUP_SIZE", 2))
 
@@ -668,6 +672,7 @@ class GPT(nn.Module):
         num_middle_layers: int = 5,
         num_exit_layers: int = 2,
         group_size: int = 1,
+        embed_rank: int = 0,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -676,7 +681,14 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.group_size = group_size
-        self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        self.embed_rank = embed_rank
+        if embed_rank > 0:
+            # Factored embedding: vocab -> rank -> model_dim
+            self.tok_emb = nn.Embedding(vocab_size, embed_rank)
+            self.embed_up = CastedLinear(embed_rank, model_dim, bias=False)
+        else:
+            self.tok_emb = nn.Embedding(vocab_size, model_dim)
+            self.embed_up = None
         self.num_skip_weights = min(num_entry_layers, num_exit_layers)
         self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
         block_args = (model_dim, num_heads, num_kv_heads, mlp_mult, rope_base, qk_gain_init)
@@ -698,6 +710,8 @@ class GPT(nn.Module):
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)
+        if self.embed_up is not None:
+            x = self.embed_up(x)
         x = F.rms_norm(x, (x.size(-1),))
         x0 = x
 
@@ -729,7 +743,14 @@ class GPT(nn.Module):
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
         if self.tie_embeddings:
-            logits_proj = F.linear(x, self.tok_emb.weight)
+            if self.embed_up is not None:
+                # Factored: hidden(dim) -> rank -> vocab
+                # embed_up is Linear(rank, dim), weight shape (dim, rank)
+                # We want dim -> rank, so use the transpose
+                x_rank = x @ self.embed_up.weight.to(x.dtype)  # (B*S, dim) @ (dim, rank) -> (B*S, rank)
+                logits_proj = F.linear(x_rank, self.tok_emb.weight.to(x.dtype))  # (B*S, rank) @ (vocab, rank)^T
+            else:
+                logits_proj = F.linear(x, self.tok_emb.weight)
         else:
             if self.lm_head is None:
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
@@ -853,6 +874,7 @@ def main() -> None:
         num_middle_layers=args.num_middle_layers,
         num_exit_layers=args.num_exit_layers,
         group_size=args.group_size,
+        embed_rank=args.embed_rank,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
@@ -883,6 +905,8 @@ def main() -> None:
     ]
     if base_model.skip_weights.numel() > 0:
         scalar_params.append(base_model.skip_weights)
+    if base_model.embed_up is not None:
+        matrix_params.append(base_model.embed_up.weight)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
     optimizer_tok = torch.optim.Adam(
         [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}],

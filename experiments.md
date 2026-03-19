@@ -79,4 +79,19 @@ Net speed: 394ms/step (vs baseline 513ms) — still 23% faster despite 2× longe
 | sp8192, tuned LR | 1.2810 | 14.9MB | Default LR was better |
 | **sp16384, 5 blocks (2+1+2)** | **1.2634** | **15.4MB** | **Vocab keeps winning!** |
 
-Key insight: vocab size is the single biggest lever. Each doubling of vocab reduces tokens_per_byte by ~27%, directly lowering BPB even with higher per-token loss. The tradeoff is fewer transformer blocks (more params in embedding), but the BPB gains dominate.
+| sp16384, 4 blocks (2+0+2) | 1.2632 | 14.0MB | Same quality, simpler (no hourglass!) |
+| sp16384, d384, 8 blocks | 1.2902 | 13.1MB | Narrow worse than wide |
+| sp16384, tuned LR | 1.2752 | 14.0MB | Default LR was better |
+| sp32768, d512, 3 blocks | 1.2701 | 20.2MB | OVER LIMIT |
+| sp32768, d384, 5 blocks | 1.2762 | 16.2MB | OVER LIMIT |
+| sp32768, factored r=256 | 1.3068 | 14.0MB | Bottleneck kills quality |
+| sp24576, 3 blocks | 1.2747 | 16.4MB | OVER LIMIT |
+| sp24576, 2 blocks | 1.3029 | 14.9MB | Too few blocks |
+
+**Best: sp16384 + 4 blocks (2+0+2) + d512 = val_bpb 1.2632, 14.0MB**
+
+Key insight: vocab size is the single biggest lever. Sweet spot is ~16K vocab with 4 blocks at dim=512.
+- Below 16K: not enough compression per token
+- Above 16K: embedding too large, forces too few blocks
+- Factored embeddings don't help (bottleneck kills quality)
+- Width (dim) matters more than depth (blocks) at this scale
