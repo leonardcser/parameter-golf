@@ -71,7 +71,7 @@ class Hyperparameters:
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
-    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 5))
+    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 4))
     num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 2))
     group_size = int(os.environ.get("GROUP_SIZE", 2))
 
