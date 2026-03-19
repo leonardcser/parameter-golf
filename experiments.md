@@ -46,3 +46,14 @@
 | hg_lr_high (matrix=0.06) | 1.3637 | LR too high |
 
 Key finding: warmdown_iters=600 (vs 1200) is the breakthrough. The hourglass gets 42% more steps, so the warmdown can start later.
+
+### Best Result: seq_len=2048 + hourglass gs=2 + warmdown=600
+| Config | val_bpb | Steps | ms/step | Size |
+|--------|---------|-------|---------|------|
+| **best_seq2048_wd600** | **1.3323** | **1522** | **394** | **14.83MB** |
+| baseline (original) | 1.3464 | 1170 | 513 | 13.0MB |
+| **Improvement** | **-0.014** | **+352** | **-119** | **+1.8MB** |
+
+Longer sequence length (2048 vs 1024) gives each position 2× more context for prediction.
+The hourglass makes this affordable by downsampling middle layers to 1024 tokens.
+Net speed: 394ms/step (vs baseline 513ms) — still 23% faster despite 2× longer sequences.
