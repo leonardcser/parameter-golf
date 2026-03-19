@@ -69,6 +69,10 @@ class Hyperparameters:
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
+    num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
+    num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 5))
+    num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 2))
+    group_size = int(os.environ.get("GROUP_SIZE", 1))
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
@@ -659,6 +663,10 @@ class GPT(nn.Module):
         logit_softcap: float,
         rope_base: float,
         qk_gain_init: float,
+        num_entry_layers: int = 2,
+        num_middle_layers: int = 5,
+        num_exit_layers: int = 2,
+        group_size: int = 1,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -666,24 +674,14 @@ class GPT(nn.Module):
         self.tie_embeddings = tie_embeddings
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
+        self.group_size = group_size
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
-        self.num_encoder_layers = num_layers // 2
-        self.num_decoder_layers = num_layers - self.num_encoder_layers
-        self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
+        self.num_skip_weights = min(num_entry_layers, num_exit_layers)
         self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
-        self.blocks = nn.ModuleList(
-            [
-                Block(
-                    model_dim,
-                    num_heads,
-                    num_kv_heads,
-                    mlp_mult,
-                    rope_base,
-                    qk_gain_init,
-                )
-                for i in range(num_layers)
-            ]
-        )
+        block_args = (model_dim, num_heads, num_kv_heads, mlp_mult, rope_base, qk_gain_init)
+        self.entry_blocks = nn.ModuleList([Block(*block_args) for _ in range(num_entry_layers)])
+        self.middle_blocks = nn.ModuleList([Block(*block_args) for _ in range(num_middle_layers)])
+        self.exit_blocks = nn.ModuleList([Block(*block_args) for _ in range(num_exit_layers)])
         self.final_norm = RMSNorm()
         self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
         if self.lm_head is not None:
@@ -701,16 +699,31 @@ class GPT(nn.Module):
         x = self.tok_emb(input_ids)
         x = F.rms_norm(x, (x.size(-1),))
         x0 = x
-        skips: list[Tensor] = []
 
-        # First half stores skips; second half reuses them in reverse order.
-        for i in range(self.num_encoder_layers):
-            x = self.blocks[i](x, x0)
-            skips.append(x)
-        for i in range(self.num_decoder_layers):
-            if skips:
-                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            x = self.blocks[self.num_encoder_layers + i](x, x0)
+        entry_acts: list[Tensor] = []
+        for block in self.entry_blocks:
+            x = block(x, x0)
+            entry_acts.append(x)
+
+        if self.group_size > 1:
+            B, S, D = x.shape
+            x = x.reshape(B, S // self.group_size, self.group_size, D).mean(dim=2)
+            x0_mid = x0.reshape(B, S // self.group_size, self.group_size, D).mean(dim=2)
+        else:
+            x0_mid = x0
+
+        for block in self.middle_blocks:
+            x = block(x, x0_mid)
+
+        if self.group_size > 1:
+            x = torch.cat([torch.zeros_like(x[:, :1]), x[:, :-1]], dim=1)
+            x = x.unsqueeze(2).expand(B, S // self.group_size, self.group_size, D).reshape(B, S, D)
+
+        for i, block in enumerate(self.exit_blocks):
+            skip_idx = len(entry_acts) - 1 - i
+            if skip_idx >= 0 and i < self.num_skip_weights:
+                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * entry_acts[skip_idx]
+            x = block(x, x0)
 
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
@@ -835,6 +848,10 @@ def main() -> None:
         logit_softcap=args.logit_softcap,
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
+        num_entry_layers=args.num_entry_layers,
+        num_middle_layers=args.num_middle_layers,
+        num_exit_layers=args.num_exit_layers,
+        group_size=args.group_size,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
@@ -848,7 +865,11 @@ def main() -> None:
     # - untied lm_head (Adam) uses HEAD_LR
     # - matrix params in transformer blocks use MATRIX_LR via Muon
     # - vectors/scalars use SCALAR_LR via Adam
-    block_named_params = list(base_model.blocks.named_parameters())
+    block_named_params = (
+        list(base_model.entry_blocks.named_parameters())
+        + list(base_model.middle_blocks.named_parameters())
+        + list(base_model.exit_blocks.named_parameters())
+    )
     matrix_params = [
         p
         for name, p in block_named_params
