@@ -52,7 +52,7 @@ class Hyperparameters:
 
     # Training length.
     iterations = int(os.environ.get("ITERATIONS", 20000))
-    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 1200))
+    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 600))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
     train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 524_288))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 1024))
@@ -72,7 +72,7 @@ class Hyperparameters:
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
     num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 5))
     num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 2))
-    group_size = int(os.environ.get("GROUP_SIZE", 1))
+    group_size = int(os.environ.get("GROUP_SIZE", 2))
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))

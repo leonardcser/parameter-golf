@@ -32,3 +32,17 @@
 2. **Speed kills**: Any change slower than baseline costs training steps, which matters more than per-step quality at 10 min budget
 3. **Hourglass is most promising**: Only 0.002 from baseline, would likely win on 8xH100 (42% more training steps)
 4. **Baseline is near-optimal**: The 9-layer transformer with Muon optimizer is extremely well-tuned for this scale
+
+---
+
+## Phase 2: Hyperparameter Tuning
+
+### Sweep Results (hourglass gs=2 base)
+| Config | val_bpb | Notes |
+|--------|---------|-------|
+| **hg_warmdown (600)** | **1.3434** | **BEATS BASELINE (1.3464)!** |
+| hg_lr_low (matrix=0.03) | 1.3480 | Slightly better than default LR |
+| hg_gs2 (defaults) | 1.3487 | Hourglass with no mid-val |
+| hg_lr_high (matrix=0.06) | 1.3637 | LR too high |
+
+Key finding: warmdown_iters=600 (vs 1200) is the breakthrough. The hourglass gets 42% more steps, so the warmdown can start later.
