@@ -57,3 +57,22 @@ Key finding: warmdown_iters=600 (vs 1200) is the breakthrough. The hourglass get
 Longer sequence length (2048 vs 1024) gives each position 2× more context for prediction.
 The hourglass makes this affordable by downsampling middle layers to 1024 tokens.
 Net speed: 394ms/step (vs baseline 513ms) — still 23% faster despite 2× longer sequences.
+
+### Further Tuning (seq4096 + hourglass gs=2)
+| Config | val_bpb | Notes |
+|--------|---------|-------|
+| matrix_lr=0.025, wd=300 | 1.3273 | Lower LR + shorter warmdown |
+| + matrix_lr=0.03, embed=0.035 | 1.3303 | |
+| + muon_momentum=0.97 | **1.3259** | Higher momentum smooths optim |
+| muon_momentum=0.98 | 1.3283 | Too high |
+| matrix_lr=0.02, wd=200 | 1.3310 | LR too low |
+
+### Vocab Size Experiments (biggest lever!)
+| Config | val_bpb | Size | Notes |
+|--------|---------|------|-------|
+| sp1024 (baseline vocab) | 1.3259 | 14.1MB | Best sp1024 config |
+| **sp4096, 9 blocks** | **1.2968** | **15.4MB** | Larger vocab = fewer tokens/byte |
+| **sp4096, 8 blocks (2+4+2)** | **1.2951** | **14.0MB** | Fewer blocks = faster, still better |
+| **sp8192, 7 blocks (2+3+2)** | **1.2776** | **14.5MB** | **Even larger vocab wins again!** |
+
+Key insight: vocab size is the single biggest lever. Each doubling of vocab reduces tokens_per_byte by ~27%, directly lowering BPB even with higher per-token loss.
