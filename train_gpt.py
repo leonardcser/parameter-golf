@@ -38,10 +38,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 class Hyperparameters:
     # Data paths are shard globs produced by the existing preprocessing pipeline.
-    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp16384v3")
+    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp16384stable")
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
     val_files = os.path.join(data_path, "fineweb_val_*.bin")
-    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_16384_bpe.model")
+    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_16384stable_bpe.model")
     run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
     seed = int(os.environ.get("SEED", 1337))
 
@@ -76,7 +76,7 @@ class Hyperparameters:
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 3))
     num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 0))
     num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 4))
-    group_size = int(os.environ.get("GROUP_SIZE", 1))
+    group_size = int(os.environ.get("GROUP_SIZE", 2))
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
