@@ -63,9 +63,9 @@ class Hyperparameters:
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 20480))
     num_layers = int(os.environ.get("NUM_LAYERS", 9))
-    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
-    model_dim = int(os.environ.get("MODEL_DIM", 512))
-    num_heads = int(os.environ.get("NUM_HEADS", 8))
+    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 7))
+    model_dim = int(os.environ.get("MODEL_DIM", 448))
+    num_heads = int(os.environ.get("NUM_HEADS", 7))
     mlp_mult = int(os.environ.get("MLP_MULT", 2))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
@@ -73,7 +73,7 @@ class Hyperparameters:
     embed_rank = int(os.environ.get("EMBED_RANK", 0))  # 0 = full rank (standard embedding)
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
     num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 0))
-    num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 2))
+    num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 3))
     group_size = int(os.environ.get("GROUP_SIZE", 2))
 
     # Optimizer hyperparameters.
@@ -610,7 +610,6 @@ class CausalSelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    # relu^2 MLP from the original modded-nanogpt setup
     def __init__(self, dim: int, mlp_mult: int):
         super().__init__()
         hidden = mlp_mult * dim
