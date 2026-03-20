@@ -216,7 +216,24 @@ Longer warmdown also helps consistently up to ~58% of total steps.
 Config: sp16384v2, d448, 7-head MHA, 7 blocks (3+0+4), seq4096, gs=2,
 batch=196608, warmdown=1500, adaptive softcap (base=20), rope_base=500k,
 qk_gain=3.0, NS=7, Muon WD 0.04, ortho init, grad clip 0.3, int8+zstd-22.
-Total improvement: 1.3464 → 1.2343 (-0.112, 8.3% better).
+Total improvement: 1.3464 → 1.2334 (-0.113, 8.4% better).
+
+### AdamW + Muon WD Tuning
+| Config | val_bpb | Notes |
+|--------|---------|-------|
+| Adam (no WD) for embed/scalar | 1.2343 | Previous |
+| **AdamW WD=0.01** | **1.2334** | **Best! Weight decay helps all params** |
+| AdamW WD=0.02 | 1.2339 | Too much |
+| Muon WD=0.06 | 1.2345 | 0.04 is optimal |
+
+### Other experiments
+| Config | val_bpb | Notes |
+|--------|---------|-------|
+| muon=0.98 | 1.2354 | 0.97 is optimal |
+| LR=0.03 | 1.2367 | 0.025 is optimal |
+| softcap=100 (none) | 1.2376 | Softcap helps |
+| min skips (1+6) | 1.2365 | U-Net skips help |
+| MTP (multi-token prediction) | 1.5012 | Needs separate heads |
 
 ### Estimated 8xH100 Score: ~1.10-1.13 BPB
 With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + TTT + adaptive softcap + more training steps
