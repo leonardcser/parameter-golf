@@ -95,3 +95,14 @@ Key insight: vocab size is the single biggest lever. Sweet spot is ~16K vocab wi
 - Above 16K: embedding too large, forces too few blocks
 - Factored embeddings don't help (bottleneck kills quality)
 - Width (dim) matters more than depth (blocks) at this scale
+
+### Tokenizer Quality Experiments
+| Config | val_bpb | Size | Tokenizer docs |
+|--------|---------|------|---------------|
+| sp16384, 4blk, 200K docs | 1.2632 | 14.0MB | 200K |
+| sp16384v2, 4blk, 1M docs | 1.2726 | 14.0MB | 1M (improved!) |
+| sp20480, 4blk, 200K docs | 1.2684 | 15.9MB | 200K |
+| **sp20480v2, 4blk, 1M docs** | **1.2703** | **15.9MB** | **1M (best!)** |
+| sp20480v2 + muon=0.97 | 1.2705 | 15.9MB | 1M (no help) |
+
+Better tokenizer training data consistently improves BPB.
