@@ -76,7 +76,7 @@ class Hyperparameters:
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 3))
     num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 0))
     num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 4))
-    group_size = int(os.environ.get("GROUP_SIZE", 2))
+    group_size = int(os.environ.get("GROUP_SIZE", 1))
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
