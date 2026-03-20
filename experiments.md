@@ -195,11 +195,28 @@ rope_base=500k, qk_gain=3.0, NS=7, int8+zstd-22.
 | int6 d448 7blk | 1.2629 | 13.8MB | Int6 hurts on 1 GPU |
 | int6 d448 9blk | 1.2614 | 16.1MB | Over limit |
 
-### Overall Best on 1 GPU: val_bpb = 1.2529
+### Batch Size + Warmdown Optimization
+| batch_tokens | warmdown | steps | ms/step | val_bpb | Notes |
+|-------------|----------|-------|---------|---------|-------|
+| 524288 | 300 | 1200 | 500 | 1.2529 | Previous best |
+| 262144 | 300 | 1994 | 301 | 1.2461 | Huge batch size win |
+| 196608 | 400 | 2575 | 233 | 1.2437 | Sweet spot for batch |
+| 131072 | 500 | 3873 | 155 | 1.2489 | Too small, noisy grads |
+| 196608 | 600 | 2575 | 233 | 1.2397 | |
+| 196608 | 800 | 2575 | 233 | 1.2369 | |
+| 196608 | 1000 | 2575 | 233 | 1.2364 | |
+| 196608 | 1200 | 2575 | 233 | 1.2353 | |
+| **196608** | **1500** | **2575** | **233** | **1.2343** | **NEW BEST** |
+| 196608 | 2000 | 2575 | 233 | 1.2355 | Too much warmdown |
+
+Key finding: smaller batch → more steps → better BPB (to a point).
+Longer warmdown also helps consistently up to ~58% of total steps.
+
+### Overall Best on 1 GPU: val_bpb = 1.2343
 Config: sp16384v2, d448, 7-head MHA, 7 blocks (3+0+4), seq4096, gs=2,
-adaptive softcap (base=20), rope_base=500k, qk_gain=3.0, NS=7,
-Muon WD 0.04, ortho init, grad clip 0.3, int8+zstd-22.
-Total improvement: 1.3464 → 1.2529 (-0.094, 6.9% better).
+batch=196608, warmdown=1500, adaptive softcap (base=20), rope_base=500k,
+qk_gain=3.0, NS=7, Muon WD 0.04, ortho init, grad clip 0.3, int8+zstd-22.
+Total improvement: 1.3464 → 1.2343 (-0.112, 8.3% better).
 
 ### Estimated 8xH100 Score: ~1.10-1.13 BPB
 With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + TTT + adaptive softcap + more training steps
