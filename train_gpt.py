@@ -60,7 +60,7 @@ class Hyperparameters:
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 0))  # 0 = use train_seq_len
     eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
     eval_batch_seqs = int(os.environ.get("EVAL_BATCH_SEQS", 32))
-    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 3.0))
 
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 20480))
