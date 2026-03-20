@@ -728,6 +728,11 @@ class GPT(nn.Module):
         self.middle_blocks = nn.ModuleList([Block(*block_args) for _ in range(num_middle_layers)])
         self.exit_blocks = nn.ModuleList([Block(*block_args) for _ in range(num_exit_layers)])
         self.final_norm = RMSNorm()
+        # Adaptive softcap: learned per-position scaling for logit confidence.
+        # High-entropy positions (sentence starts) need wider range, low-entropy
+        # positions (mid-word) can be more constrained. Novel technique.
+        self.softcap_proj = CastedLinear(model_dim, 1, bias=False)
+        nn.init.zeros_(self.softcap_proj.weight)
         self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
         if self.lm_head is not None:
             self.lm_head._zero_init = True
@@ -795,7 +800,10 @@ class GPT(nn.Module):
             if self.lm_head is None:
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
             logits_proj = self.lm_head(x)
-        logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+        # Adaptive softcap: base + learned per-position adjustment (novel technique)
+        cap = self.logit_softcap + self.softcap_proj(x)  # (B*S, 1)
+        cap = cap.clamp(min=5.0)
+        logits = cap * torch.tanh(logits_proj / cap)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
 
 
@@ -1045,6 +1053,8 @@ def main() -> None:
         scalar_params.append(base_model.skip_weights)
     if base_model.embed_up is not None:
         matrix_params.append(base_model.embed_up.weight)
+    # Adaptive softcap projection (tiny, treat as scalar param)
+    scalar_params.append(base_model.softcap_proj.weight)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
     optimizer_tok = torch.optim.Adam(
         [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}],
