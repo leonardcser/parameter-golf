@@ -150,5 +150,17 @@ From plan agent analysis, implementing:
 ### Overall Best (1 GPU)
 **val_bpb=1.2649** with d448 5blk sp20480 int8+zstd Muon WD ortho init grad clip
 
-### Estimated 8xH100 Score: ~1.15-1.17 BPB
-With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + more training steps
+### Novel Techniques
+| Technique | val_bpb | Impact | Notes |
+|-----------|---------|--------|-------|
+| **Adaptive softcap (NOVEL)** | **1.2607** | **-0.004** | **Learned per-position logit scaling. NEW BEST.** |
+| Ngram hash (bigram+trigram) | 1.2608 | ~0 | Not worth complexity on 1 GPU |
+| SWA (avg last 50%) | 1.2733 | +0.013 | Hurts on 1 GPU, helps on 8xH100 |
+| Byte-weighted loss | 1.4971 | +0.23 | Completely breaks training |
+
+### Current Best on 1 GPU: val_bpb = 1.2607
+Config: d448, 7-head MHA, 5 blocks, sp20480 (2M doc tokenizer), seq4096, Muon WD 0.04,
+ortho init, grad clip 0.3, adaptive softcap, int8+zstd-22.
+
+### Estimated 8xH100 Score: ~1.14-1.16 BPB
+With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + adaptive softcap + more training steps
