@@ -137,4 +137,18 @@ From plan agent analysis, implementing:
 1. **Byte-weighted loss** — align training with BPB metric (weight tokens by byte count)
 2. **Trigram hash embedding** — extend BigramHash to 3-token context
 3. **Adaptive softcap** — learned per-position logit scaling
-4. **Int6 bit-packing** — save 25% storage on quantized weights
+4. **Int6 quantization** — implemented, saves 25% but degrades 0.016 BPB on 1 GPU
+
+### Int6 + Larger Model Experiments
+| Config | val_bpb | Size | Notes |
+|--------|---------|------|-------|
+| d448 5blk int6+zstd | 1.2815 | 11.6MB | Int6 degrades 0.016 BPB |
+| d448 8blk int6+zstd | 1.2697 | 14.9MB | Extra blocks help but not enough |
+| d448 5blk int6 MLP3x | 1.2747 | 12.9MB | Needs more steps (8xH100) |
+| Muon 0.99 int8 | 1.2654 | 14.3MB | Similar to 0.97 on 1 GPU |
+
+### Overall Best (1 GPU)
+**val_bpb=1.2649** with d448 5blk sp20480 int8+zstd Muon WD ortho init grad clip
+
+### Estimated 8xH100 Score: ~1.15-1.17 BPB
+With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + more training steps
