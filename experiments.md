@@ -120,3 +120,21 @@ Better tokenizer training data consistently improves BPB.
 | SwiGLU d512, 5blk | 1.2647 | 16.2MB | Over limit |
 
 **Current best: sp20480v3, d448, 7-head MHA, 5 blocks = val_bpb 1.2609**
+
+### Integrated Community Techniques (from issue #140 analysis)
+| Technique | Credit | val_bpb | Impact |
+|-----------|--------|---------|--------|
+| Muon WD 0.04 + Ortho Init + Grad Clip 0.3 | @notapplica #60, @raahilshah #162 | 1.2649 | +0.004 worse but 0.5MB smaller! |
+| SmearGate + BigramHash | @unnir #102,#135 | 1.2693 | Worse on 1 GPU (needs more steps) |
+| SmearGate only | @unnir | 1.2679 | Worse on 1 GPU |
+| Sliding window eval (stride=64) | @mattqlf #50 | TBD | ~0.03 on 8xH100, too slow on 1 GPU |
+
+Note: SmearGate/BigramHash need more training steps to learn (1200 steps on 1 GPU isn't enough).
+On 8xH100 with ~7000+ steps, these techniques should provide significant gains.
+
+### Novel Ideas (in progress)
+From plan agent analysis, implementing:
+1. **Byte-weighted loss** — align training with BPB metric (weight tokens by byte count)
+2. **Trigram hash embedding** — extend BigramHash to 3-token context
+3. **Adaptive softcap** — learned per-position logit scaling
+4. **Int6 bit-packing** — save 25% storage on quantized weights
