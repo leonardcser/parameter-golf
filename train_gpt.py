@@ -410,13 +410,17 @@ def quantize_state_dict_int8(state_dict: dict[str, Tensor]):
             continue
 
         stats["num_float_tensors"] += 1
-        # Use int6 for large matrices (saves ~25% vs int8).
-        # Credit: @nanlliu PR #39 on openai/parameter-golf.
-        q, s = quantize_int6_per_row(t)
-        if s.ndim > 0:
-            qmeta[name] = {"scheme": "per_row_int6", "axis": 0}
+        use_int6 = bool(int(os.environ.get("USE_INT6", "0")))
+        if use_int6:
+            q, s = quantize_int6_per_row(t)
+            if s.ndim > 0:
+                qmeta[name] = {"scheme": "per_row_int6", "axis": 0}
+            else:
+                qmeta[name] = {"scheme": "int6"}
         else:
-            qmeta[name] = {"scheme": "int6"}
+            q, s = quantize_float_tensor(t)
+            if s.ndim > 0:
+                qmeta[name] = {"scheme": "per_row", "axis": 0}
         quantized[name] = q
         scales[name] = s
         dtypes[name] = str(t.dtype).removeprefix("torch.")
