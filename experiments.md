@@ -216,7 +216,8 @@ Longer warmdown also helps consistently up to ~58% of total steps.
 Config: sp16384v2, d448, 7-head MHA, 7 blocks (3+0+4), seq4096, gs=2,
 batch=196608, warmdown=1500, adaptive softcap (base=20), rope_base=500k,
 qk_gain=3.0, NS=7, Muon WD 0.04, ortho init, grad clip 0.3, int8+zstd-22.
-Total improvement: 1.3464 → 1.2334 (-0.113, 8.4% better).
+Total improvement: 1.3464 → 1.2331 (-0.113, 8.4% better).
+Uses stable tokenizer (fineweb_16384stable_bpe.model, won't be overwritten).
 
 ### AdamW + Muon WD Tuning
 | Config | val_bpb | Notes |
