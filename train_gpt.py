@@ -1054,10 +1054,12 @@ def main() -> None:
     # Adaptive softcap projection (tiny, treat as scalar param)
     scalar_params.append(base_model.softcap_proj.weight)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
-    optimizer_tok = torch.optim.Adam(
+    adam_wd = float(os.environ.get("ADAM_WEIGHT_DECAY", 0.01))
+    optimizer_tok = torch.optim.AdamW(
         [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}],
         betas=(args.beta1, args.beta2),
         eps=args.adam_eps,
+        weight_decay=adam_wd,
         fused=True,
     )
     optimizer_muon = Muon(
@@ -1069,9 +1071,10 @@ def main() -> None:
     )
     for group in optimizer_muon.param_groups:
         group["base_lr"] = args.matrix_lr
-    optimizer_scalar = torch.optim.Adam(
+    optimizer_scalar = torch.optim.AdamW(
         [{"params": scalar_params, "lr": args.scalar_lr, "base_lr": args.scalar_lr}],
         betas=(args.beta1, args.beta2),
+        weight_decay=adam_wd,
         eps=args.adam_eps,
         fused=True,
     )
