@@ -71,7 +71,7 @@ class Hyperparameters:
     mlp_mult = int(os.environ.get("MLP_MULT", 2))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
-    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
+    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 20.0))
     embed_rank = int(os.environ.get("EMBED_RANK", 0))  # 0 = full rank (standard embedding)
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 2))
     num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 0))
