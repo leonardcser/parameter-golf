@@ -106,3 +106,17 @@ Key insight: vocab size is the single biggest lever. Sweet spot is ~16K vocab wi
 | sp20480v2 + muon=0.97 | 1.2705 | 15.9MB | 1M (no help) |
 
 Better tokenizer training data consistently improves BPB.
+
+### Dim/Block Optimization (sp20480v3)
+| Config | val_bpb | Size | Notes |
+|--------|---------|------|-------|
+| d512, 4blk | 1.2674 | 15.9MB | Baseline for sp20480 |
+| d448, 5blk MHA | **1.2609** | **15.2MB** | **Best! More depth > width** |
+| d448, 6blk MHA | 1.2625 | 16.4MB | Over limit |
+| d448, 6blk GQA-1 | 1.2783 | 15.2MB | Too few KV heads |
+| d384, 7blk MHA | 1.2669 | 14.3MB | Too narrow |
+| d480, 4blk GQA-4 | 1.2795 | 14.6MB | Too wide, not deep enough |
+| SwiGLU d512, 4blk | 1.2721 | 15.1MB | Saves params but relu² better |
+| SwiGLU d512, 5blk | 1.2647 | 16.2MB | Over limit |
+
+**Current best: sp20480v3, d448, 7-head MHA, 5 blocks = val_bpb 1.2609**
