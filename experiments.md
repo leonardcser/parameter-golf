@@ -162,5 +162,27 @@ From plan agent analysis, implementing:
 Config: d448, 7-head MHA, 5 blocks, sp20480 (2M doc tokenizer), seq4096, Muon WD 0.04,
 ortho init, grad clip 0.3, adaptive softcap, int8+zstd-22.
 
-### Estimated 8xH100 Score: ~1.14-1.16 BPB
+### RoPE Base + QK Gain + NS Steps Sweep
+| Config | val_bpb | Notes |
+|--------|---------|-------|
+| rope_base=10000 (default) | 1.2603 | |
+| rope_base=50000 | 1.2587 | |
+| rope_base=100000 | 1.2582 | |
+| **rope_base=500000** | **1.2578** | **Optimal** |
+| rope_base=1000000 | 1.2586 | |
+| qk_gain=1.5 (default) | 1.2578 | |
+| qk_gain=2.0 | 1.2569 | |
+| qk_gain=2.5 | 1.2563 | |
+| **qk_gain=3.0** | **1.2559** | **Optimal** |
+| qk_gain=4.0 | 1.2567 | |
+| NS=5 (default) | 1.2559 | |
+| **NS=7** | **1.2546** | **Optimal** |
+| NS=10 | 1.2560 | |
+
+### Final Best on 1 GPU: val_bpb = 1.2546
+Config: d448, 7-head MHA, 5 blocks, sp20480 (2M doc tokenizer), seq4096,
+Muon WD 0.04, ortho init, grad clip 0.3, adaptive softcap (base=20),
+rope_base=500k, qk_gain=3.0, NS=7, int8+zstd-22.
+
+### Estimated 8xH100 Score: ~1.12-1.14 BPB
 With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + adaptive softcap + more training steps
