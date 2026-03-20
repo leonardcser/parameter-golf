@@ -1329,6 +1329,42 @@ def main() -> None:
         f"eval_time:{1000.0 * (time.perf_counter() - t_qeval):.0f}ms"
     )
 
+    # Test-Time Training (credit: @timowhite88 PR #152, @samacqua PR #77).
+    # Adapt model to validation data using causal context only (no data leakage).
+    ttt_lr = float(os.environ.get("TTT_LR", 0.0))
+    if ttt_lr > 0:
+        log0(f"Starting TTT with lr={ttt_lr}...")
+        t_ttt = time.perf_counter()
+        ttt_opt = torch.optim.SGD(base_model.parameters(), lr=ttt_lr, momentum=0.95)
+        base_model.train()
+        ttt_seq_len = eval_args.train_seq_len
+        ttt_tokens = val_tokens[:val_tokens.numel()]
+        ttt_total = (ttt_tokens.numel() - 1) // ttt_seq_len
+        ttt_batch = max(1, 524288 // ttt_seq_len)
+        for ttt_start in range(0, ttt_total, ttt_batch):
+            ttt_end = min(ttt_start + ttt_batch, ttt_total)
+            raw_s = ttt_start * ttt_seq_len
+            raw_e = ttt_end * ttt_seq_len + 1
+            local = ttt_tokens[raw_s:raw_e].to(device=device, dtype=torch.int64)
+            tx = local[:-1].reshape(-1, ttt_seq_len)
+            ty = local[1:].reshape(-1, ttt_seq_len)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                ttt_loss = base_model(tx, ty) if not hasattr(base_model, 'module') else base_model.module(tx, ty)
+            ttt_loss.backward()
+            ttt_opt.step()
+            ttt_opt.zero_grad(set_to_none=True)
+        base_model.eval()
+        torch.cuda.synchronize()
+        log0(f"TTT done in {1000*(time.perf_counter()-t_ttt):.0f}ms")
+
+        # Re-evaluate after TTT
+        ttt_val_loss, ttt_val_bpb = eval_val(
+            eval_args, model, rank, world_size, device, grad_accum_steps,
+            val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+        )
+        log0(f"final_ttt val_loss:{ttt_val_loss:.4f} val_bpb:{ttt_val_bpb:.4f}")
+        log0(f"final_ttt_exact val_loss:{ttt_val_loss:.8f} val_bpb:{ttt_val_bpb:.8f}")
+
     # Sliding window eval (credit: @mattqlf PR #50) — overlapping windows give
     # better context for each scored token, improving BPB by ~0.03.
     if args.eval_stride > 0:
