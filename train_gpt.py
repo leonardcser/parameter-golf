@@ -68,14 +68,14 @@ class Hyperparameters:
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 7))
     model_dim = int(os.environ.get("MODEL_DIM", 448))
     num_heads = int(os.environ.get("NUM_HEADS", 7))
-    mlp_mult = int(os.environ.get("MLP_MULT", 2))
+    mlp_mult = float(os.environ.get("MLP_MULT", 2.5))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 500000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 20.0))
     embed_rank = int(os.environ.get("EMBED_RANK", 0))  # 0 = full rank (standard embedding)
     num_entry_layers = int(os.environ.get("NUM_ENTRY_LAYERS", 3))
     num_middle_layers = int(os.environ.get("NUM_MIDDLE_LAYERS", 0))
-    num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 4))
+    num_exit_layers = int(os.environ.get("NUM_EXIT_LAYERS", 3))
     group_size = int(os.environ.get("GROUP_SIZE", 2))
 
     # Optimizer hyperparameters.
@@ -646,9 +646,9 @@ class CausalSelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, dim: int, mlp_mult: int):
+    def __init__(self, dim: int, mlp_mult: float):
         super().__init__()
-        hidden = mlp_mult * dim
+        hidden = int(mlp_mult * dim)
         self.fc = CastedLinear(dim, hidden, bias=False)
         self.proj = CastedLinear(hidden, dim, bias=False)
         self.proj._zero_init = True
