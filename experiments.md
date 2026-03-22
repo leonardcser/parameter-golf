@@ -313,6 +313,13 @@ on 1 GPU (not enough QAT training). Need ~5000+ steps for QAT to be effective.
 | 6blk + bigram 8192/128 | 1.2301 | **16.3MB** | Over limit |
 | 6blk + bigram 4096/64 | 1.2351 | 15.3MB | Not enough steps to learn |
 
+### Asymmetric Encoder/Decoder Split
+| Split | val_bpb (live) | val_bpb (int8) | Notes |
+|-------|---------------|---------------|-------|
+| **3+3 (default)** | **1.2263** | **1.2277** | **Best — symmetric skips** |
+| 4+2 (more encoder) | 1.2300 | 1.2315 | |
+| 2+4 (more decoder) | 1.2290 | 1.2304 | |
+
 ### Seed Variance
 | Seed | val_bpb (live) | val_bpb (int8) |
 |------|---------------|---------------|

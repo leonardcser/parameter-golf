@@ -79,6 +79,7 @@ class Hyperparameters:
     rope_base = float(os.environ.get("ROPE_BASE", 500000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 20.0))
     group_size = int(os.environ.get("GROUP_SIZE", 2))  # hourglass mean-pool factor (1=disabled)
+    encoder_layers = int(os.environ.get("ENCODER_LAYERS", 0))  # 0 = auto (num_layers // 2)
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
@@ -773,6 +774,7 @@ class GPT(nn.Module):
         group_size: int = 1,
         bigram_vocab_size: int = 0,
         bigram_dim: int = 128,
+        encoder_layers: int = 0,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -783,7 +785,7 @@ class GPT(nn.Module):
         self.group_size = group_size
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
         self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim) if bigram_vocab_size > 0 else None
-        self.num_encoder_layers = num_layers // 2
+        self.num_encoder_layers = encoder_layers if encoder_layers > 0 else num_layers // 2
         self.num_decoder_layers = num_layers - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
         self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
@@ -1065,6 +1067,7 @@ def main() -> None:
         group_size=args.group_size,
         bigram_vocab_size=args.bigram_vocab_size,
         bigram_dim=args.bigram_dim,
+        encoder_layers=args.encoder_layers,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
