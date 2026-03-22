@@ -236,5 +236,82 @@ Uses stable tokenizer (fineweb_16384stable_bpe.model, won't be overwritten).
 | min skips (1+6) | 1.2365 | U-Net skips help |
 | MTP (multi-token prediction) | 1.5012 | Needs separate heads |
 
-### Estimated 8xH100 Score: ~1.10-1.13 BPB
-With int6 MLP3x + SmearGate + BigramHash + sliding window + SWA + TTT + adaptive softcap + more training steps
+---
+
+## Phase 3: Clean Code Rebuild + New Techniques
+
+Rebuilt code from scratch — PR #315 integration was 2× slower per step (437ms vs 213ms)
+due to unused feature branches in the compiled model. Clean code restored full speed.
+
+### Architecture Refinements (clean code, best hparams)
+| Config | val_bpb (live) | val_bpb (int8) | Size | Steps | Notes |
+|--------|---------------|---------------|------|-------|-------|
+| 6blk flat (no hourglass) | 1.2326 | 1.2344 | 15.0MB | 2812 | Baseline clean code |
+| 6blk hourglass gs=2 | 1.2303 | 1.2321 | 15.0MB | 2810 | Mean-pool regularizer helps! |
+| 7blk mlp2.5 (no hg) | 1.2283 | 1.2300 | **16.3MB** | 2471 | Over 16MB limit |
+| 7blk mlp2.25 | 1.2327 | 1.2346 | 15.9MB | 2516 | Slower, similar quality |
+| 7blk mlp2.0 | 1.2347 | 1.2366 | 15.3MB | 2556 | Narrow MLP hurts |
+| 7blk hg gs=2 | 1.2301 | 1.2318 | **16.3MB** | 2487 | Over limit |
+| sp12288 7blk | 1.2334 | 1.2350 | 14.7MB | 2543 | Smaller vocab hurts more |
+
+### Community Technique Integration
+| Technique | Credit | val_bpb (int8) | Impact | Notes |
+|-----------|--------|---------------|--------|-------|
+| GPTQ-lite int8 | @signalrush #414, @thwu1 #379 | 1.2344 | +0.000 | No benefit for int8 (helps int6) |
+| EMA decay=0.997 | community | 1.2360 | +0.016 worse | Not enough steps on 1 GPU |
+| **Value Residual** | **ResFormer, @PR #413** | **1.2299** | **-0.022** | **V0 skip-connect through depth** |
+| Gated Attention | arXiv:2505.06708 | 1.2401 | +0.057 worse | Adds overhead, needs more steps |
+
+### Warmdown Tuning (with Value Residual + hourglass)
+| warmdown | val_bpb (live) | val_bpb (int8) |
+|----------|---------------|---------------|
+| 1200 | 1.2300 | 1.2315 |
+| **1500** | **1.2284** | **1.2299** |
+| 1800 | 1.2289 | 1.2304 |
+| 2000 | 1.2304 | 1.2322 |
+
+### Sparse Attention Gate (credit: modded-nanogpt PR #117)
+| Config | val_bpb (live) | val_bpb (int8) | Size | Notes |
+|--------|---------------|---------------|------|-------|
+| VR + hourglass (prev best) | 1.2284 | 1.2299 | 15.0MB | |
+| **+ Sparse Attention Gate** | **1.2265** | **1.2279** | **15.0MB** | **72 extra params, -0.002!** |
+
+### NEW Overall Best on 1 GPU: val_bpb = 1.2263 (live) / 1.2277 (int8+zstd)
+Config: sp16384stable, d448, 7-head MHA, 6 blocks, seq4096, hourglass gs=2,
+batch=196608, warmdown=1500, adaptive softcap (base=20, novel), Value Residual
+(credit: ResFormer arXiv:2410.17897), Sparse Attention Gate (credit: modded-nanogpt #117),
+rope_base=500k, qk_gain=3.0, NS=7, Muon WD 0.04, AdamW WD 0.01, ortho init,
+grad clip 0.3, GPTQ-lite int8+zstd-22. Size: 15.1MB.
+Sliding window (stride=64): **1.2190 BPB**.
+Total improvement: 1.3464 → 1.2190 (-0.127, 9.5% better).
+
+### Deeper Models with Int6 Quantization
+| Config | val_bpb (live) | val_bpb (quant) | Size | Notes |
+|--------|---------------|----------------|------|-------|
+| 9blk MLP3 int6+QAT0.15 | 1.2199 | 1.2431 (int6) | 14.3MB | Int6 gap +0.023 |
+| 9blk MLP3 int6+QAT0.30 | 1.2203 | 1.2441 (int6) | 14.3MB | Earlier QAT doesn't help |
+| 8blk MLP2.5 int8 bigram | 1.2228 | 1.2242 (int8) | **18.7MB** | Over limit |
+| 8blk MLP2.5 int6+QAT bigram | 1.2232 | 1.2456 (int6) | 12.9MB | Int6 gap too large |
+| 8blk MLP2.5 int8 no bigram | 1.2240 | 1.2254 (int8) | **17.5MB** | Over limit |
+| 7blk MLP3 int8 | 1.2249 | 1.2263 (int8) | **17.3MB** | Over limit |
+| 7blk MLP3 mixed int6/int8 | 1.2247 | 1.2382 (int6) | 13.9MB | Int6 gap +0.013 |
+| 8blk d384 MLP3 int8 | 1.2293 | 1.2307 (int8) | 14.9MB | Narrow hurts |
+
+Key finding: more layers help quality (1.22 vs 1.23) but int6 quantization loses 0.013-0.024 BPB
+on 1 GPU (not enough QAT training). Need ~5000+ steps for QAT to be effective.
+
+### Novel Optimizer: Mousse-lite (diagonal curvature preconditioning)
+| Config | val_bpb (int8) | Notes |
+|--------|---------------|-------|
+| Muon (baseline) | 1.2299 | |
+| Mousse-lite beta2=0.95 | 1.2319 | Diagonal approx too simple |
+| Mousse-lite beta2=0.99 | 1.2317 | Marginally better but still worse |
+
+### BigramHash on 6 layers
+| Config | val_bpb (int8) | Size | Notes |
+|--------|---------------|------|-------|
+| 6blk + bigram 8192/128 | 1.2301 | **16.3MB** | Over limit |
+| 6blk + bigram 4096/64 | 1.2351 | 15.3MB | Not enough steps to learn |
+
+### Estimated 8xH100 Score: ~1.10-1.12 BPB
+With int6 + more layers + SmearGate + BigramHash + sliding window + SWA/EMA + adaptive softcap + Value Residual
