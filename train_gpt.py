@@ -128,15 +128,16 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int = 10, eps: float = 1e-7) -
 
 
 class Muon(torch.optim.Optimizer):
-    """Muon with optional diagonal curvature preconditioning (Mousse-lite).
-    When beta2 > 0, preconditions gradient by 1/sqrt(EMA of g²) before Newton-Schulz.
-    Credit: arXiv:2603.09697 (Mousse), diagonal approximation from @Skrisps26."""
+    """Muon optimizer with optional Kronecker-factored curvature preconditioning (Mousse).
+    Credit: arXiv:2603.09697 (Mousse: Rectifying the Geometry of Muon)."""
     def __init__(self, params, lr: float, momentum: float, backend_steps: int,
-                 nesterov: bool = True, weight_decay: float = 0.0, beta2: float = 0.0, eps: float = 1e-8):
+                 nesterov: bool = True, weight_decay: float = 0.0, beta2: float = 0.0,
+                 alpha: float = 0.125, eig_interval: int = 10, eps: float = 1e-5):
         super().__init__(
             params,
             dict(lr=lr, momentum=momentum, backend_steps=backend_steps,
-                 nesterov=nesterov, weight_decay=weight_decay, beta2=beta2, eps=eps),
+                 nesterov=nesterov, weight_decay=weight_decay, beta2=beta2,
+                 alpha=alpha, eig_interval=eig_interval, eps=eps),
         )
 
     @torch.no_grad()
@@ -159,7 +160,9 @@ class Muon(torch.optim.Optimizer):
             backend_steps = group["backend_steps"]
             nesterov = group["nesterov"]
             beta2 = group.get("beta2", 0.0)
-            eps = group.get("eps", 1e-8)
+            alpha = group.get("alpha", 0.125)
+            eig_interval = group.get("eig_interval", 10)
+            eps = group.get("eps", 1e-5)
 
             total_params = sum(int(p.numel()) for p in params)
             updates_flat = torch.zeros(total_params, device=params[0].device, dtype=torch.bfloat16)
@@ -173,19 +176,51 @@ class Muon(torch.optim.Optimizer):
                         state["momentum_buffer"] = torch.zeros_like(g)
                         state["step"] = 0
                         if beta2 > 0:
-                            state["v"] = torch.zeros_like(g)
+                            m, n = g.shape
+                            state["L"] = torch.zeros(m, m, device=g.device, dtype=torch.float32)
+                            state["R"] = torch.zeros(n, n, device=g.device, dtype=torch.float32)
+                            state["Q_L"] = torch.eye(m, device=g.device, dtype=torch.float32)
+                            state["S_L"] = torch.ones(m, device=g.device, dtype=torch.float32)
+                            state["Q_R"] = torch.eye(n, device=g.device, dtype=torch.float32)
+                            state["S_R"] = torch.ones(n, device=g.device, dtype=torch.float32)
                     state["step"] += 1
+                    t = state["step"]
                     buf = state["momentum_buffer"]
                     buf.mul_(momentum).add_(g)
                     if nesterov:
                         g = g.add(buf, alpha=momentum)
-                    # Diagonal curvature preconditioning (Mousse-lite)
+                    # Kronecker-factored curvature preconditioning (Mousse)
                     if beta2 > 0:
-                        v = state["v"]
-                        v.mul_(beta2).addcmul_(g, g, value=1.0 - beta2)
-                        v_hat = v / (1.0 - beta2 ** state["step"])
-                        g = g / (v_hat.sqrt() + eps)
-                    g = zeropower_via_newtonschulz5(g, steps=backend_steps)
+                        g32 = g.float()
+                        bc = beta2 / (1 - beta2 ** t)
+                        gc = (1 - beta2) / (1 - beta2 ** t)
+                        L, R = state["L"], state["R"]
+                        L.mul_(bc).add_(g32 @ g32.T, alpha=gc)
+                        R.mul_(bc).add_(g32.T @ g32, alpha=gc)
+                        if t % eig_interval == 0:
+                            m, n = g.shape
+                            L_norm = (m / (L.trace() + eps)) * L + eps * torch.eye(m, device=L.device)
+                            R_norm = (n / (R.trace() + eps)) * R + eps * torch.eye(n, device=R.device)
+                            lam_L, Q_L = torch.linalg.eigh(L_norm)
+                            lam_R, Q_R = torch.linalg.eigh(R_norm)
+                            state["Q_L"] = Q_L
+                            state["S_L"] = lam_L.clamp_min(eps).pow(-alpha)
+                            state["Q_R"] = Q_R
+                            state["S_R"] = lam_R.clamp_min(eps).pow(-alpha)
+                        Q_L, S_L = state["Q_L"], state["S_L"]
+                        Q_R, S_R = state["Q_R"], state["S_R"]
+                        # Whiten: rotate to eigenbasis, scale, Newton-Schulz, scale back, rotate back
+                        M_eig = Q_L.T @ g32 @ Q_R
+                        M_tilde = S_L[:, None] * M_eig * S_R[None, :]
+                        M_bar = zeropower_via_newtonschulz5(M_tilde, steps=backend_steps)
+                        gamma = M_bar.norm()
+                        U_eig = S_L[:, None] * M_bar * S_R[None, :]
+                        g = (Q_L @ U_eig @ Q_R.T).to(g.dtype)
+                        g_norm = g.norm()
+                        if g_norm > 0:
+                            g = gamma * g / g_norm
+                    else:
+                        g = zeropower_via_newtonschulz5(g, steps=backend_steps)
                     g *= max(1, g.size(0) / g.size(1)) ** 0.5
                     updates_flat[curr : curr + p.numel()] = g.reshape(-1)
                 curr += p.numel()

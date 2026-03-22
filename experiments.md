@@ -300,12 +300,17 @@ Total improvement: 1.3464 → 1.2190 (-0.127, 9.5% better).
 Key finding: more layers help quality (1.22 vs 1.23) but int6 quantization loses 0.013-0.024 BPB
 on 1 GPU (not enough QAT training). Need ~5000+ steps for QAT to be effective.
 
-### Novel Optimizer: Mousse-lite (diagonal curvature preconditioning)
-| Config | val_bpb (int8) | Notes |
-|--------|---------------|-------|
-| Muon (baseline) | 1.2299 | |
-| Mousse-lite beta2=0.95 | 1.2319 | Diagonal approx too simple |
-| Mousse-lite beta2=0.99 | 1.2317 | Marginally better but still worse |
+### Novel Optimizer: Mousse (curvature-aware Muon)
+| Config | val_bpb (int8) | Steps | Notes |
+|--------|---------------|-------|-------|
+| Muon (baseline) | 1.2277 | 2701 | |
+| Mousse-lite beta2=0.95 | 1.2319 | 2730 | Diagonal approx too simple |
+| Mousse-lite beta2=0.99 | 1.2317 | 2718 | |
+| **Mousse full Kronecker** | **1.2485** | **2022** | **35% overhead from L/R accumulation** |
+| Mousse full eig=50 | 1.2480 | 2020 | Eig interval doesn't help — L/R accum is the bottleneck |
+
+Conclusion: Mousse is designed for large models (160M+) where curvature info has high value relative to overhead.
+At 15M params with 10min budget, the O(m²n) overhead per step is devastating.
 
 ### BigramHash on 6 layers
 | Config | val_bpb (int8) | Size | Notes |
