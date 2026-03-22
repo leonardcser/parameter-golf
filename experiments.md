@@ -313,5 +313,34 @@ on 1 GPU (not enough QAT training). Need ~5000+ steps for QAT to be effective.
 | 6blk + bigram 8192/128 | 1.2301 | **16.3MB** | Over limit |
 | 6blk + bigram 4096/64 | 1.2351 | 15.3MB | Not enough steps to learn |
 
+### Seed Variance
+| Seed | val_bpb (live) | val_bpb (int8) |
+|------|---------------|---------------|
+| 1337 | 1.2263 | 1.2277 |
+| 42 | 1.2294 | 1.2308 |
+| Expected 3-seed avg | ~1.2278 | ~1.2293 |
+
+### Token Mixing (scalar gate)
+| Config | val_bpb (int8) | Notes |
+|--------|---------------|-------|
+| No mixing | 1.2277 | |
+| Scalar mix gate | 1.2279 | No benefit — attention handles this |
+
+### Summary of Technique Impact on 1 GPU
+| Technique | Impact on int8 BPB | Notes |
+|-----------|-------------------|-------|
+| Batch size 196K (from 524K) | -0.009 | More steps > gradient quality |
+| Vocab sp16384 (from sp1024) | -0.050 | Biggest single lever |
+| Adaptive softcap (novel) | -0.004 | Per-position logit scaling |
+| Hourglass gs=2 | -0.002 | Mean-pool regularizer |
+| Value Residual | -0.003 | V0 skip-connect |
+| Sparse Attention Gate | -0.002 | 72 params, per-head gating |
+| RoPE 500k + QK 3.0 + NS=7 | -0.005 | Hyperparameter tuning |
+| Int6 quantization | +0.013-0.024 | HURTS — not enough QAT steps |
+| EMA | +0.002 | HURTS — not enough steps |
+| BigramHash | +0.005 | HURTS — not enough steps to learn |
+| Mousse-lite | +0.002 | HURTS — diagonal too simple |
+| Gated Attention | +0.010 | HURTS — overhead not worth it |
+
 ### Estimated 8xH100 Score: ~1.10-1.12 BPB
 With int6 + more layers + SmearGate + BigramHash + sliding window + SWA/EMA + adaptive softcap + Value Residual
